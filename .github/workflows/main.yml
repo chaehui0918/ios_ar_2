@@ -1,115 +1,83 @@
+
 name: iOS Unsigned IPA Build
 
 on: workflow_dispatch
 
-
-
 jobs:
-
   build:
-
     runs-on: macos-latest
 
     steps:
-
       # 1. Git LFS 포함 체크아웃
-
-      - uses: actions/checkout@v4
-
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
-
           lfs: true
 
-
-
       - name: Checkout LFS objects
-
         run: git lfs pull
 
-
-
       # 2. 실행 권한 부여
-
       - name: Grant Execute Permissions to Scripts
-
         run: |
+          find . -type f -name "*.sh" -exec chmod +x {} +
 
-          chmod +x *.sh || true
+      # 3. Xcode 프로젝트 서명 설정 변경
+      - name: Fix Xcode Signing Settings
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-          chmod -R +x ./*.sh || true
+          p = Path("Unity-iPhone.xcodeproj/project.pbxproj")
+          text = p.read_text()
 
+          text = re.sub(
+              r'\bProvisioningStyle\s*=\s*Manual\s*;',
+              'ProvisioningStyle = Automatic;',
+              text
+          )
 
+          text = re.sub(
+              r'\bCODE_SIGN_STYLE\s*=\s*Manual\s*;',
+              'CODE_SIGN_STYLE = Automatic;',
+              text
+          )
 
-      # 3. 메인 타깃 및 Framework 무서명 빌드 (학생 프로젝트 호환 보강)
+          p.write_text(text)
+          print("Xcode signing settings updated")
+          PY
 
+      # 4. 서명 설정 확인
+      - name: Check Signing Settings
+        run: |
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_STYLE=Automatic PROVISIONING_PROFILE_SPECIFIER="" PROVISIONING_PROFILE="" DEVELOPMENT_TEAM="" -showBuildSettings | grep -E 'CODE_SIGNING_ALLOWED =|CODE_SIGNING_REQUIRED =|CODE_SIGN_STYLE =|PROVISIONING_PROFILE_SPECIFIER =|DEVELOPMENT_TEAM ='
+
+      # 5. 서명 없이 iOS 앱 빌드
       - name: Build Unsigned App
-
         run: |
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -sdk iphoneos -destination 'generic/platform=iOS' -configuration Release -derivedDataPath ./build_output CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CODE_SIGN_ENTITLEMENTS="" CODE_SIGN_STYLE=Automatic PROVISIONING_PROFILE_SPECIFIER="" PROVISIONING_PROFILE="" DEVELOPMENT_TEAM="" CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO DEBUG_INFORMATION_FORMAT=dwarf GCC_GENERATE_DEBUGGING_SYMBOLS=NO clean build
 
-          xcodebuild -project Unity-iPhone.xcodeproj \
-
-            -scheme Unity-iPhone \
-
-            -sdk iphoneos \
-
-            -configuration Release \
-
-            -derivedDataPath ./build_output \
-
-            CODE_SIGNING_ALLOWED=NO \
-
-            CODE_SIGNING_REQUIRED=NO \
-
-            CODE_SIGN_IDENTITY="-" \
-
-            CODE_SIGN_ENTITLEMENTS="" \
-
-            CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
-
-            ENABLE_USER_SCRIPT_SANDBOXING=NO \
-
-            DEBUG_INFORMATION_FORMAT=dwarf \
-
-            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
-
-            clean build
-
-
-
-      # 4. .app을 Payload 폴더에 넣고 ipa 압축
-
+      # 6. 앱을 Payload 폴더에 넣고 IPA 압축
       - name: Package to IPA
-
         run: |
-
           mkdir -p Payload
 
-          APP_PATH=$(find ./build_output/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1)
+          APP_PATH=$(find ./build_output/Build/Products/Release-iphoneos -maxdepth 1 -type d -name "*.app" -print -quit)
 
           if [ -z "$APP_PATH" ]; then
-
             echo "Error: .app bundle not found!"
-
             exit 1
-
           fi
 
-          cp -r "$APP_PATH" Payload/
-
+          cp -R "$APP_PATH" Payload/
           zip -r app-unsigned.ipa Payload
 
-
-
-      # 5. 결과물 업로드
-
+      # 7. 결과물 업로드
       - name: Upload Artifact
-
         uses: actions/upload-artifact@v4
-
         with:
-
           name: ios-unsigned-ipa
-
           path: app-unsigned.ipa
-
           retention-days: 7
+
