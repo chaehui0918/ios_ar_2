@@ -40,10 +40,11 @@ jobs:
 
 
 
-     # 3. 메인 타깃 및 Framework 무서명 빌드
+    # 3. 무서명 iOS 앱 빌드
       - name: Build Unsigned App
         run: |
-          xcodebuild -project Unity-iPhone.xcodeproj \
+          xcodebuild \
+            -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
@@ -53,15 +54,12 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" \
-            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_STYLE=Automatic \
             PROVISIONING_PROFILE_SPECIFIER="" \
             PROVISIONING_PROFILE="" \
             DEVELOPMENT_TEAM="" \
             CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
-            DEBUG_INFORMATION_FORMAT=dwarf \
-            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
             clean build
-
       # 4. .app을 Payload 폴더에 넣고 ipa 압축
 
       - name: Package to IPA
