@@ -2,6 +2,8 @@ name: iOS Unsigned IPA Build
 
 on: workflow_dispatch
 
+
+
 jobs:
 
   build:
@@ -10,7 +12,35 @@ jobs:
 
     steps:
 
+      # 1. Git LFS 포함 체크아웃
+
       - uses: actions/checkout@v4
+
+        with:
+
+          lfs: true
+
+
+
+      - name: Checkout LFS objects
+
+        run: git lfs pull
+
+
+
+      # 2. 실행 권한 부여 (Permission denied 해결)
+
+      - name: Grant Execute Permissions to Scripts
+
+        run: |
+
+          chmod +x *.sh || true
+
+          chmod -R +x ./*.sh || true
+
+
+
+      # 3. 메인 타깃 및 Framework 무서명 빌드
 
       - name: Build Unsigned App
 
@@ -24,15 +54,27 @@ jobs:
 
             -configuration Release \
 
+            -derivedDataPath ./build_output \
+
             CODE_SIGNING_ALLOWED=NO \
 
             CODE_SIGNING_REQUIRED=NO \
 
-            CODE_SIGNING_IDENTITY="" \
+            CODE_SIGN_IDENTITY="" \
 
-            PROVISIONING_PROFILE_SPECIFIER="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+
+            CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
+
+            DEBUG_INFORMATION_FORMAT=dwarf \
+
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
 
             clean build
+
+
+
+      # 4. .app을 Payload 폴더에 넣고 ipa 압축
 
       - name: Package to IPA
 
@@ -40,9 +82,23 @@ jobs:
 
           mkdir -p Payload
 
-          cp -r build/Release-iphoneos/build.app Payload/  # (프로젝트 구조에 맞춰 .app 경로 지정)
+          APP_PATH=$(find ./build_output/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1)
+
+          if [ -z "$APP_PATH" ]; then
+
+            echo "Error: .app bundle not found!"
+
+            exit 1
+
+          fi
+
+          cp -r "$APP_PATH" Payload/
 
           zip -r app-unsigned.ipa Payload
+
+
+
+      # 5. 결과물 업로드
 
       - name: Upload Artifact
 
@@ -53,3 +109,5 @@ jobs:
           name: ios-unsigned-ipa
 
           path: app-unsigned.ipa
+
+          retention-days: 7
